@@ -282,7 +282,7 @@ class BaseHashTable {
   static TagVector
   loadTags(uint8_t* tags, int64_t tagIndex) {
     // Cannot use xsimd::batch::unaligned here because we need to skip TSAN.
-    auto src = tags + tagIndex;
+    auto src = tags + tagIndex;  // tags是table的起点，tagIndex是Bucket的offset
 #if XSIMD_WITH_SSE2
     return TagVector(_mm_loadu_si128(reinterpret_cast<__m128i const*>(src)));
 #elif XSIMD_WITH_NEON
@@ -517,7 +517,7 @@ class HashTable : public BaseHashTable {
   // pointer. All the tags are in a 16 byte SIMD word followed by the 6 byte
   // pointers. There are 16 bytes of padding at the end to make the bucket
   // occupy exactly two (64 bytes) cache lines.
-  class Bucket {
+  class Bucket {  // total 128 byte:|-- 16 byte tag per slot --|-- 6*16 byte pointer --|-- 16 byte padding --|
    public:
     Bucket() {
       static_assert(sizeof(Bucket) == 128);
@@ -767,7 +767,7 @@ class HashTable : public BaseHashTable {
 
   // Returns the byte offset of the bucket for 'hash' starting from 'table_'.
   int64_t bucketOffset(uint64_t hash) const {
-    return hash & bucketOffsetMask_;
+    return hash & bucketOffsetMask_; // bucketOffsetMask_ = sizeMask_ & ~(kBucketSize - 1);
   }
 
   // Returns the byte offset of the next bucket from 'offset'. Wraps around at

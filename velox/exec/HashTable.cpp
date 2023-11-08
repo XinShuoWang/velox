@@ -101,9 +101,9 @@ class ProbeState {
   template <typename Table>
   inline void preProbe(const Table& table, uint64_t hash, int32_t row) {
     row_ = row;
-    bucketOffset_ = table.bucketOffset(hash);
+    bucketOffset_ = table.bucketOffset(hash);  // 根据Hash值计算属于哪个bucket，HashTable一共有2^n个Bucket，每个Bucket都有
     auto tag = BaseHashTable::hashTag(hash);
-    wantedTags_ = BaseHashTable::TagVector::broadcast(tag);
+    wantedTags_ = BaseHashTable::TagVector::broadcast(tag);  // wantedTags_，属于ProbeState的成员变量
     group_ = nullptr;
     indexInTags_ = kNotSet;
     __builtin_prefetch(
@@ -115,11 +115,11 @@ class ProbeState {
   // If there is a match, load corresponding data from the table.
   template <Operation op = Operation::kProbe, typename Table>
   inline void firstProbe(const Table& table, int32_t firstKey) {
-    tagsInTable_ = BaseHashTable::loadTags(
-        reinterpret_cast<uint8_t*>(table.table_), bucketOffset_);
+    tagsInTable_ = BaseHashTable::loadTags(  // tag只有8bit
+        reinterpret_cast<uint8_t*>(table.table_), bucketOffset_);  //加载在Bucket中的tag，参考前面提到的Bucket结构
     table.incrementTagLoads();
-    hits_ = simd::toBitMask(tagsInTable_ == wantedTags_);
-    if (hits_) {
+    hits_ = simd::toBitMask(tagsInTable_ == wantedTags_);  // 看看是否有tag相等的，tag是Hash值的一部分
+    if (hits_) { // Hash值的简单比较(1 byte)就发现了匹配
       loadNextHit<op>(table, firstKey);
     }
   }
@@ -133,7 +133,7 @@ class ProbeState {
       int64_t& numTombstones,
       bool extraCheck,
       int64_t partitionEnd = -1) {
-    if (group_ && compare(group_, row_)) {
+    if (group_ && compare(group_, row_)) { // 利用firstProbe的结果
       if (op == Operation::kErase) {
         eraseHit(table, numTombstones);
       }
@@ -159,10 +159,10 @@ class ProbeState {
           return insert(row_, bucketOffset_);
         }
       }
-      while (hits_) {
-        loadNextHit<op>(table, firstKey);
+      while (hits_) { // 此循环结束，则一次simd加载的16个tag被消耗完
+        loadNextHit<op>(table, firstKey); // 在这里不断取出hits_里命中的行
         if (!(extraCheck && group_ == alreadyChecked) &&
-            compare(group_, row_)) {
+            compare(group_, row_)) { // 调用Compare函数进行比较，如果匹配就返回group_
           if (op == Operation::kErase) {
             eraseHit(table, numTombstones);
           }
@@ -171,7 +171,7 @@ class ProbeState {
         }
       }
 
-      uint16_t empty = simd::toBitMask(tagsInTable_ == kEmptyGroup) & kFullMask;
+      uint16_t empty = simd::toBitMask(tagsInTable_ == kEmptyGroup) & kFullMask; // 特殊路径处理
       if (empty > 0) {
         if (op == Operation::kProbe) {
           return nullptr;
@@ -200,7 +200,7 @@ class ProbeState {
       }
       bucketOffset_ = table.nextBucketOffset(bucketOffset_);
       tagsInTable_ = table.loadTags(bucketOffset_);
-      hits_ = simd::toBitMask(tagsInTable_ == wantedTags_);
+      hits_ = simd::toBitMask(tagsInTable_ == wantedTags_); // 加载新的hits_
     }
   }
 
@@ -239,12 +239,12 @@ class ProbeState {
 
   template <Operation op, typename Table>
   inline void loadNextHit(Table& table, int32_t firstKey) {
-    int32_t hit = bits::getAndClearLastSetBit(hits_);
+    int32_t hit = bits::getAndClearLastSetBit(hits_); // 取最后一位命中的
 
     if (op == Operation::kErase) {
       indexInTags_ = hit;
     }
-    group_ = table.row(bucketOffset_, hit);
+    group_ = table.row(bucketOffset_, hit); // Return the row pointer at 'hit' of bucket at 'bucketOffset_'.
     __builtin_prefetch(group_ + firstKey);
     table.incrementRowLoads();
   }
@@ -333,9 +333,9 @@ bool HashTable<ignoreNullKeys>::compareKeys(
   // The loop runs at least once. Allow for first comparison to fail
   // before loop end check.
   int32_t i = 0;
-  do {
+  do { // 依次比较每个Field
     auto& hasher = lookup.hashers[i];
-    if (!rows_->equals<!ignoreNullKeys>(
+    if (!rows_->equals<!ignoreNullKeys>( // rows_是rowContainer；rows_->columnAt(i)返回的是一个结构体，表示 列 是否含有null；hasher->decodedVector()和row共同决定一个值；比较group+rows_->columnAt(i)和hasher->decodedVector()+row的值；hasher->decodedVector()存放的是用来probe的值
             group, rows_->columnAt(i), hasher->decodedVector(), row)) {
       return false;
     }
@@ -382,14 +382,14 @@ FOLLY_ALWAYS_INLINE void HashTable<ignoreNullKeys>::fullProbe(
     return;
   }
   // NOLINT
-  lookup.hits[state.row()] = state.fullProbe<op>(
-      *this,
-      0,
-      [&](char* group, int32_t row) { return compareKeys(group, lookup, row); },
+  lookup.hits[state.row()] = state.fullProbe<op>(  // 把匹配的group（指针）存放在hits结构里
+      *this, // table
+      0, // first key
+      [&](char* group, int32_t row) { return compareKeys(group, lookup, row); }, // compare，group是HashTable里匹配的行
       [&](int32_t row, uint64_t index) {
         return isJoin ? nullptr : insertEntry(lookup, index, row);
-      },
-      numTombstones_,
+      }, // insert
+      numTombstones_, // numTombstones
       !isJoin && extraCheck);
 }
 
@@ -565,7 +565,7 @@ void HashTable<ignoreNullKeys>::arrayGroupProbe(HashLookup& lookup) {
 
 template <bool ignoreNullKeys>
 void HashTable<ignoreNullKeys>::joinProbe(HashLookup& lookup) {
-  incrementProbes(lookup.rows.size());
+  incrementProbes(lookup.rows.size());  // 增加Probe计数
   if (hashMode_ == HashMode::kArray) {
     arrayJoinProbe(lookup);
     return;
@@ -576,22 +576,22 @@ void HashTable<ignoreNullKeys>::joinProbe(HashLookup& lookup) {
     return;
   }
   int32_t probeIndex = 0;
-  int32_t numProbes = lookup.rows.size();
-  const vector_size_t* rows = lookup.rows.data();
+  int32_t numProbes = lookup.rows.size();  // 需要Probe的次数
+  const vector_size_t* rows = lookup.rows.data();  // 存放Probe input的所有数据 的行号
   ProbeState state1;
   ProbeState state2;
   ProbeState state3;
   ProbeState state4;
   for (; probeIndex + 4 <= numProbes; probeIndex += 4) {
-    int32_t row = rows[probeIndex];
-    state1.preProbe(*this, lookup.hashes[row], row);
+    int32_t row = rows[probeIndex];  // row指的是当前要探查的input 第几行
+    state1.preProbe(*this, lookup.hashes[row], row);  // 使用SIMD处理一下tag，预加载一下Bucket数据
     row = rows[probeIndex + 1];
     state2.preProbe(*this, lookup.hashes[row], row);
     row = rows[probeIndex + 2];
     state3.preProbe(*this, lookup.hashes[row], row);
     row = rows[probeIndex + 3];
     state4.preProbe(*this, lookup.hashes[row], row);
-    state1.firstProbe(*this, 0);
+    state1.firstProbe(*this, 0); //有很大的概率第一次就能发现匹配的，如果发现匹配的会进行prefetch
     state2.firstProbe(*this, 0);
     state3.firstProbe(*this, 0);
     state4.firstProbe(*this, 0);
@@ -1378,6 +1378,8 @@ template <bool ignoreNullKeys>
 void HashTable<ignoreNullKeys>::decideHashMode(
     int32_t numNew,
     bool disableRangeArrayHash) {
+  setHashMode(HashMode::kHash, numNew);
+  return;
   std::vector<uint64_t> rangeSizes(hashers_.size());
   std::vector<uint64_t> distinctSizes(hashers_.size());
   std::vector<bool> useRange(hashers_.size());

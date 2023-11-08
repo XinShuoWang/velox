@@ -506,7 +506,7 @@ void HashProbe::clearDynamicFilters() {
   Operator::clearDynamicFilters();
 }
 
-void HashProbe::decodeAndDetectNonNullKeys() {
+void HashProbe::decodeAndDetectNonNullKeys() { // decode just means 'decode', inpreparation for hash()
   nonNullInputRows_.resize(input_->size());
   nonNullInputRows_.setAll();
 
@@ -576,23 +576,23 @@ void HashProbe::addInput(RowVectorPtr input) {
   }
 
   if (!hasDecoded) {
-    decodeAndDetectNonNullKeys();
+    decodeAndDetectNonNullKeys(); // 把数据decode，方便后面hash()
   }
 
   activeRows_ = nonNullInputRows_;
-  lookup_->hashes.resize(input_->size());
+  lookup_->hashes.resize(input_->size()); // 为每个input的值 的 Hash 预先准备内存
   auto mode = table_->hashMode();
   auto& buildHashers = table_->hashers();
-  for (auto i = 0; i < keyChannels_.size(); ++i) {
-    if (mode != BaseHashTable::HashMode::kHash) {
+  for (auto i = 0; i < keyChannels_.size(); ++i) {  // 每个hash列都要计算一下
+    if (mode != BaseHashTable::HashMode::kHash) { // KArray等其他hash table构建方式走的逻辑
       auto key = input_->childAt(keyChannels_[i]);
       buildHashers[i]->lookupValueIds(
           *key, activeRows_, scratchMemory_, lookup_->hashes);
     } else {
-      hashers_[i]->hash(activeRows_, i > 0, lookup_->hashes);
+      hashers_[i]->hash(activeRows_, i > 0, lookup_->hashes);   // kHash走的逻辑，lookup_->hashes里存放的是hash值
     }
   }
-  lookup_->rows.clear();
+  lookup_->rows.clear(); // lookup_->rows里存放的是input的行
   if (activeRows_.isAllSelected()) {
     lookup_->rows.resize(activeRows_.size());
     std::iota(lookup_->rows.begin(), lookup_->rows.end(), 0);
@@ -626,8 +626,8 @@ void HashProbe::addInput(RowVectorPtr input) {
       input_ = nullptr;
       return;
     }
-    lookup_->hits.resize(lookup_->rows.back() + 1);
-    table_->joinProbe(*lookup_);
+    lookup_->hits.resize(lookup_->rows.back() + 1);  // 预先分配存放probe结果的行
+    table_->joinProbe(*lookup_);  // 进行Probe
   }
   results_.reset(*lookup_);
 }

@@ -6099,4 +6099,60 @@ TEST_F(HashJoinTest, exceededMaxSpillLevel) {
       globalSpillStats().spillMaxLevelExceededCount,
       exceededMaxSpillLevelCount + 4);
 }
+
+TEST_F(HashJoinTest, simple) {
+  auto leftVectors = makeBatches(1, [&](int32_t /*unused*/) {
+    return makeRowVector({
+        makeNullableFlatVector<int64_t>(
+            {-9999, -1234, 1'0000, 100'0000, -100'0000})
+    });
+  });
+
+  auto rightVectors = makeBatches(1, [&](int32_t /*unused*/) {
+    return makeRowVector({
+        makeNullableFlatVector<int64_t>({-9999, -12345, 1'00001, 100'00001, -100'00001})
+    });
+  });
+
+  createDuckDbTable("t", leftVectors);
+  createDuckDbTable("u", rightVectors);
+
+  auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
+
+  auto assertPlan = [&](const std::vector<std::string>& leftProject,
+                        const std::vector<std::string>& leftKeys,
+                        const std::vector<std::string>& rightProject,
+                        const std::vector<std::string>& rightKeys,
+                        const std::vector<std::string>& outputLayout,
+                        core::JoinType joinType,
+                        const std::string& query) {
+    auto plan = PlanBuilder(planNodeIdGenerator)
+                    .values(leftVectors)
+                    .project(leftProject)
+                    .hashJoin(
+                        leftKeys,
+                        rightKeys,
+                        PlanBuilder(planNodeIdGenerator)
+                            .values(rightVectors)
+                            .project(rightProject)
+                            .planNode(),
+                        "",
+                        outputLayout,
+                        joinType)
+                    .planNode();
+    HashJoinBuilder(*pool_, duckDbQueryRunner_, driverExecutor_.get())
+        .planNode(plan)
+        .referenceQuery(query)
+        .run();
+  };
+  assertPlan(
+      {"c0 AS t0"}, // leftProject
+      {"t0"}, // leftKeys
+      {"c0 AS u0"}, // rightProject
+      {"u0"}, // rightKeys
+      {"t0", "u0"}, // outputLayout
+      core::JoinType::kInner,
+      "SELECT t.c0, u.c0 FROM t INNER JOIN u ON t.c0 = u.c0");
+}
+
 } // namespace

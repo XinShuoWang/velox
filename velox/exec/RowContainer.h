@@ -928,6 +928,8 @@ class RowContainer {
       return compareStringAsc(
                  valueAt<StringView>(row, offset), decoded, index) == 0;
     }
+    auto x = decoded.valueAt<T>(index);
+    auto y = valueAt<T>(row, offset);
     return decoded.valueAt<T>(index) == valueAt<T>(row, offset);
   }
 
@@ -948,6 +950,8 @@ class RowContainer {
                  valueAt<StringView>(row, offset), decoded, index) == 0;
     }
 
+    auto x = decoded.valueAt<T>(index);
+    auto y = valueAt<T>(row, offset);
     return decoded.valueAt<T>(index) == valueAt<T>(row, offset);
   }
 
@@ -1379,7 +1383,7 @@ inline bool RowContainer::equals(
     return isNullAt(row, column.nullByte(), column.nullMask());
   }
 
-  if constexpr (!mayHaveNulls) {
+  if constexpr (!mayHaveNulls) { // 比较row+column.offset()和decoded+index值
     return VELOX_DYNAMIC_TYPE_DISPATCH(
         equalsNoNulls, typeKind, row, column.offset(), decoded, index);
   } else {
