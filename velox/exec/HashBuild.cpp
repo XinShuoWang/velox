@@ -395,17 +395,17 @@ void HashBuild::addInput(RowVectorPtr input) {
     }
   }
   auto rows = table_->rows();
-  auto nextOffset = rows->nextOffset();
+  auto nextOffset = rows->nextOffset(); // nextOffset=9
   activeRows_.applyToSelected([&](auto rowIndex) {
-    char* newRow = rows->newRow();
-    if (nextOffset) {
+    char* newRow = rows->newRow(); // 申请一个新的内存空间 来存放数据
+    if (nextOffset) { // 如果出现hash冲突
       *reinterpret_cast<char**>(newRow + nextOffset) = nullptr;
     }
     // Store the columns for each row in sequence. At probe time
     // strings of the row will probably be in consecutive places, so
     // reading one will prime the cache for the next.
-    for (auto i = 0; i < hashers.size(); ++i) {
-      rows->store(hashers[i]->decodedVector(), rowIndex, newRow, i);
+    for (auto i = 0; i < hashers.size(); ++i) { // 按顺序存储每行的列，内存地址连续，cache友好
+      rows->store(hashers[i]->decodedVector(), rowIndex, newRow, i); // 把decode中的值放到newRow+i位置上
     }
     for (auto i = 0; i < dependentChannels_.size(); ++i) {
       rows->store(*decoders_[i], rowIndex, newRow, i + hashers.size());

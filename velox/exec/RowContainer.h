@@ -586,7 +586,7 @@ class RowContainer {
   // For a hash join table with possible non-unique entries, the offset of
   // the pointer to the next row with the same key. 0 if keys are
   // guaranteed unique, e.g. for a group by or semijoin build.
-  int32_t nextOffset() const {
+  int32_t nextOffset() const { // 对于可能具有非唯一条目的哈希连接表，指向具有相同键的下一行的指针的偏移量。 0 如果保证键是唯一的，例如 对于 group by 或 semijoin 构建。
     return nextOffset_;
   }
 
@@ -815,7 +815,7 @@ class RowContainer {
     *reinterpret_cast<T*>(group + offset) = decoded.valueAt<T>(index);
     if constexpr (std::is_same_v<T, StringView>) {
       RowSizeTracker tracker(group[rowSizeOffset_], *stringAllocator_);
-      stringAllocator_->copyMultipart(group, offset);
+      stringAllocator_->copyMultipart(group, offset); // string是多段存储，需要进行多段拷贝
     }
   }
 
@@ -1174,9 +1174,9 @@ class RowContainer {
   int32_t nextOffset_ = 0;
   // Bit position of null bit  in the row. 0 if no null flag. Order is keys,
   // accumulators, dependent.
-  std::vector<int32_t> nullOffsets_;
+  std::vector<int32_t> nullOffsets_; // 标志着row中null的位置
   // Position of field or accumulator. Corresponds 1:1 to 'nullOffset_'.
-  std::vector<int32_t> offsets_;
+  std::vector<int32_t> offsets_; // 标志着row中Field的位置
   // Offset and null indicator offset of non-aggregate fields as a single word.
   // Corresponds pairwise to 'types_'.
   std::vector<RowColumn> rowColumns_;

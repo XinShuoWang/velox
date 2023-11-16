@@ -259,14 +259,14 @@ char* RowContainer::newRow() {
   VELOX_DCHECK(mutable_, "Can't add row into an immutable row container");
   ++numRows_;
   char* row;
-  if (firstFreeRow_) {
+  if (firstFreeRow_) { // 用链表保存free的内存，如果有直接从freeList里分配
     row = firstFreeRow_;
     VELOX_CHECK(bits::isBitSet(row, freeFlagOffset_));
     firstFreeRow_ = nextFree(row);
     --numFreeRows_;
   } else {
     row = rows_.allocateFixed(fixedRowSize_ + normalizedKeySize_, alignment_) +
-        normalizedKeySize_;
+        normalizedKeySize_; // 分配一段内存，fixedRowSize_=17，normalizedKeySize_=8
     if (normalizedKeySize_) {
       ++numRowsWithNormalizedKey_;
     }
@@ -413,7 +413,7 @@ void RowContainer::store(
   auto numKeys = keyTypes_.size();
   if (column < numKeys && !nullableKeys_) {
     VELOX_DYNAMIC_TYPE_DISPATCH(
-        storeNoNulls,
+        storeNoNulls, // 需要store的行里面不含有null
         typeKinds_[column],
         decoded,
         index,
